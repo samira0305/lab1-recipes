@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Recipes (Lab 1)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <h1>Dish Recipes</h1>
+  <p class="small">This page talks to <code>/api/dishes</code> for CRUD.</p>
+
+  <h2>Add new dish</h2>
+  <form id="create-form">
+    <label>Name <input required name="name" /></label>
+    <label>Origin <input required name="origin" /></label>
+    <label>Cooking time (min) <input required name="cookingTime" type="number" min="1" /></label>
+    <label>Spice level
+      <select name="spiceLevel">
+        <option>mild</option><option>medium</option><option>hot</option><option>extra-hot</option>
+      </select>
+    </label>
+    <label>Ingredients (one per line)
+      <textarea required name="ingredients" rows="3" placeholder="tomatoes&#10;onion&#10;garlic"></textarea>
+    </label>
+    <label>Preparation steps (one per line)
+      <textarea required name="preparationSteps" rows="4" placeholder="Chop onions&#10;Sauté&#10;Simmer 20 min"></textarea>
+    </label>
+    <button type="submit">Create</button>
+    <span id="create-msg" class="small"></span>
+  </form>
+
+  <h2>All dishes</h2>
+  <table id="dishes-table">
+    <thead>
+      <tr>
+        <th>Name</th><th>Origin</th><th>Time</th><th>Spice</th>
+        <th>Ingredients</th><th>Steps</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const tableBody = document.querySelector("#dishes-table tbody");
+    const createForm = document.querySelector("#create-form");
+    const createMsg = document.querySelector("#create-msg");
+
+    const api = {
+      async list() {
+        const res = await fetch("/api/dishes");
+        if (!res.ok) throw new Error("Failed to fetch dishes");
+        return res.json();
+      },
+      async create(payload) {
+        const res = await fetch("/api/dishes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to create");
+        }
+        return res.json();
+      },
+      async update(id, payload) {
+        const res = await fetch(`/api/dishes/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to update");
+        }
+        return res.json();
+      },
+      async remove(id) {
+        const res = await fetch(`/api/dishes/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to delete");
+        }
+        return res.json();
+      }
+    };
+
+    const arrFromTextarea = t => t.split("\n").map(s => s.trim()).filter(Boolean);
+    const textareaFromArr = arr => (arr || []).join("\n");
+
+    function renderRow(dish) {
+      const tr = document.createElement("tr");
+      tr.dataset.id = dish.id;
+      tr.innerHTML = `
+        <td><input name="name" value="${dish.name || ""}" /></td>
+        <td><input name="origin" value="${dish.origin || ""}" /></td>
+        <td><input name="cookingTime" type="number" min="1" value="${dish.cookingTime || 1}" /></td>
+        <td>
+          <select name="spiceLevel">
+            ${["mild","medium","hot","extra-hot"].map(opt =>
+              `<option ${dish.spiceLevel===opt?"selected":""}>${opt}</option>`
+            ).join("")}
+          </select>
+        </td>
+        <td><textarea name="ingredients" rows="3">${textareaFromArr(dish.ingredients)}</textarea></td>
+        <td><textarea name="preparationSteps" rows="3">${textareaFromArr(dish.preparationSteps)}</textarea></td>
+        <td class="row-actions">
+          <button class="update">Update</button>
+          <button class="delete">Delete</button>
+        </td>
+      `;
+
+      tr.querySelector(".update").addEventListener("click", async () => {
+        const id = tr.dataset.id;
+        const payload = {
+          name: tr.querySelector('[name="name"]').value.trim(),
+          origin: tr.querySelector('[name="origin"]').value.trim(),
+          cookingTime: Number(tr.querySelector('[name="cookingTime"]').value),
+          spiceLevel: tr.querySelector('[name="spiceLevel"]').value,
+          ingredients: arrFromTextarea(tr.querySelector('[name="ingredients"]').value),
+          preparationSteps: arrFromTextarea(tr.querySelector('[name="preparationSteps"]').value)
+        };
+        try { await api.update(id, payload); alert("Updated!"); await refresh(); }
+        catch (e) { alert(e.message); }
+      });
+
+      tr.querySelector(".delete").addEventListener("click", async () => {
+        const id = tr.dataset.id;
+        if (!confirm("Delete this dish?")) return;
+        try { await api.remove(id); tr.remove(); }
+        catch (e) { alert(e.message); }
+      });
+
+      return tr;
+    }
+
+    async function refresh() {
+      tableBody.innerHTML = "";
+      const dishes = await api.list();
+      dishes.forEach(d => tableBody.appendChild(renderRow(d)));
+    }
+
+    createForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      createMsg.textContent = "";
+      const f = e.currentTarget;
+      const payload = {
+        name: f.name.value.trim(),
+        origin: f.origin.value.trim(),
+        cookingTime: Number(f.cookingTime.value),
+        spiceLevel: f.spiceLevel.value,
+        ingredients: arrFromTextarea(f.ingredients.value),
+        preparationSteps: arrFromTextarea(f.preparationSteps.value)
+      };
+      try { await api.create(payload); f.reset(); createMsg.textContent = "Created!"; await refresh(); }
+      catch (e) { createMsg.textContent = e.message; }
+    });
+
+    refresh().catch(err => alert(err.message));
+  </script>
+</body>
+</html>
